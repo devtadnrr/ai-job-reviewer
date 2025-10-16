@@ -16,6 +16,7 @@
     "@types/express": "^5.0.3",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.7.1",
+    "@types/pdf-parse": "^1.1.5",
     "dotenv": "^17.2.3",
     "eslint": "^9.37.0",
     "eslint-plugin-prettier": "^5.5.4",
@@ -30,9 +31,15 @@
     "typescript-eslint": "^8.46.0"
   },
   "dependencies": {
+    "@chroma-core/google-gemini": "^0.1.7",
+    "@google/genai": "^1.24.0",
     "@prisma/client": "^6.17.1",
+    "@types/fs-extra": "^11.0.4",
     "bullmq": "^5.61.0",
+    "chromadb": "^3.0.17",
+    "fs-extra": "^11.3.2",
     "ioredis": "^5.8.1",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "pdfjs-dist": "^5.4.296"
   }
 }
