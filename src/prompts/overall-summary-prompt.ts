@@ -25,6 +25,6 @@ export const OVERALL_PROMPT = {
     4. Suggested next steps in the hiring process
     5. Any additional assessments recommended
     
-    Keep it professional, balanced, and decision-focused.
+    Return 3-5 sentences summarizing your evaluation and recommendation.
   `,
 };

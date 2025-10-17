@@ -1,6 +1,28 @@
-# AI Job Reviewer
+# AI Job Screening Reviewer
 
-AI-powered system for evaluating job candidates using Google Gemini, ChromaDB, and BullMQ.
+AI-powered backend service that automates initial screening of job applications by evaluating candidate CVs and project reports against job descriptions and scoring rubrics using Google Gemini, ChromaDB (RAG), and BullMQ (async processing).
+
+
+### ✅ Core Requirements
+- **RESTful API Endpoints:** POST /upload, POST /evaluate, GET /result/{id}
+- **RAG System:** ChromaDB + Gemini embeddings with job-title-scoped document retrieval
+- **LLM Chaining:** 5-step pipeline (Parse CV → Evaluate CV → Parse Project → Evaluate Project → Final Summary)
+- **Async Processing:** BullMQ job queue with immediate job ID return
+- **Error Handling:** Retry logic, exponential backoff, timeout handling, rate limit detection
+- **Structured Evaluation:** cv_match_rate (0-100%), project_score (1-5), detailed feedback
+
+### 🚀 Tech Stack
+- **Backend:** Node.js + Express + TypeScript
+- **LLM:** Google Gemini 2.0 Flash (JSON mode, structured outputs)
+- **Vector DB:** ChromaDB (document embeddings + retrieval)
+- **Queue:** BullMQ + Redis (async job processing)
+- **Database:** PostgreSQL + Prisma ORM
+- **Deployment:** Docker Compose (5 services, auto-migrations)
+- **Logging:** Winston (structured JSON logs)
+
+### 📚 Documentation
+- **[README.md](README.md)** - Setup and API guide (this file)
+- **[APPROACH_AND_DESIGN.md](APPROACH_AND_DESIGN.md)** - Complete architecture explanation, design decisions, prompt engineering strategies
 
 ## Quick Start
 
@@ -36,75 +58,39 @@ This starts:
 
 **Note:** Database migrations run automatically when the containers start.
 
-### 3. Test the API
-
-```bash
-# Health check
-curl http://localhost:3000/
-
-# Upload CV
-curl -X POST http://localhost:3000/upload \
-  -F "file=@cv.pdf" \
-  -F "type=cv"
-
-# Upload Project Report
-curl -X POST http://localhost:3000/upload \
-  -F "file=@report.pdf" \
-  -F "type=project_report"
-
-# Start Evaluation
-curl -X POST http://localhost:3000/evaluate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "job_title": "Frontend Developer",
-    "cv_document_id": "uuid-from-upload",
-    "report_document_id": "uuid-from-upload"
-  }'
-
-# Check Result
-curl http://localhost:3000/result/{job-id}
-```
-
 ## Project Structure
 
 ```
-documents/          # Job descriptions (PDF)
-  ├── backend_engineer/
-  ├── frontend_engineer/
-  └── data_analyst/
+documents/                    # Internal job documents (ingested into RAG)
+  ├── backend_engineer_2025/
+  │   ├── job_description.pdf
+  │   ├── case_study_brief.pdf
+  │   └── scoring_rubric.pdf
+  └── frontend_engineer_2025/
+      ├── job_description.pdf
+      ├── case_study_brief.pdf
+      └── scoring_rubric.pdf
+
 src/
-  ├── server.ts     # API server
-  ├── worker.ts     # Background worker
-  ├── services/     # Business logic
-  └── api/routes/   # API endpoints
+  ├── server.ts              # Express API server
+  ├── worker.ts              # BullMQ background worker
+  ├── api/
+  │   ├── routes/           # API endpoints (upload, evaluate, result)
+  │   └── middlewares/      # Multer file upload middleware
+  ├── services/
+  │   ├── evaluation.services.ts  # Main evaluation orchestration
+  │   ├── llm.services.ts         # LLM interaction (Gemini)
+  │   └── rag.services.ts         # ChromaDB + embeddings
+  ├── jobs/
+  │   ├── evaluation-queue.ts     # BullMQ queue setup
+  │   └── evaluation-worker.ts    # Job processor with retry logic
+  ├── prompts/                     # LLM prompts (CV, project, summary)
+  ├── schemas/                     # JSON schemas for validation
+  └── utils/                       # Shared utilities (logger, PDF extraction, etc.)
+
+prisma/
+  └── schema.prisma          # Database schema (PostgreSQL)
 ```
-
-### Quick Start
-
-1. **Start all services:**
-   ```bash
-   docker compose up --build
-   # or use the convenience script:
-   ./start.sh
-   ```
-
-2. **Start in detached mode (background):**
-   ```bash
-   docker compose up -d
-   ```
-
-3. **Stop all services:**
-   ```bash
-   docker compose down
-   ```
-
-4. **View logs:**
-   ```bash
-   docker compose logs -f
-   # or for specific service:
-   docker compose logs -f api
-   docker compose logs -f worker
-   ```
 
 ## Environment Variables
 
