@@ -8,6 +8,7 @@ import {
   projectParseSchema,
 } from "../schemas";
 import { OVERALL_PROMPT } from "../prompts/overall-summary-prompt";
+import logger from "../utils/logger";
 
 /* Interfaces for JSON parsed cv evaluation response from LLM */
 interface cvEvaluationResponse {
@@ -41,6 +42,8 @@ export class LLMService {
    * @throws An error if the LLM fails to return a valid response.
    */
   async parseCV(cvText: string): Promise<string> {
+    logger.debug("Parsing CV with LLM", { textLength: cvText.length });
+
     // Build the prompt with CV text
     const prompt = buildPrompt(CV_PROMPTS.PARSE_CV, { cvText });
 
@@ -55,10 +58,12 @@ export class LLMService {
     });
 
     if (!response?.text) {
+      logger.error("LLM failed to return CV parse response");
       throw new Error("Failed to parse CV - no response from LLM");
     }
 
     // Return the raw JSON string response
+    logger.info("CV parsed successfully");
     return response.text;
   }
 
@@ -78,6 +83,13 @@ export class LLMService {
     scoringRubric: string,
     job_description: string,
   ): Promise<cvEvaluationResponse> {
+    // Log cv evaluation start
+    logger.debug("Evaluating CV with LLM", {
+      cvTextLength: cvText.length,
+      rubricLength: scoringRubric.length,
+      descriptionLength: job_description.length,
+    });
+
     // Build the prompt with CV text, scoring rubric, and job description
     const prompt = buildPrompt(CV_PROMPTS.EVALUATE_CV, {
       cvText,
@@ -96,11 +108,17 @@ export class LLMService {
     });
 
     if (!response?.text) {
+      logger.error("LLM failed to return CV evaluation response");
       throw new Error("Failed to evaluate CV - no response from LLM");
     }
 
     // Parse to JSON and return the evaluation result
-    return JSON.parse(response.text) as cvEvaluationResponse;
+    const result = JSON.parse(response.text) as cvEvaluationResponse;
+    logger.info("CV evaluated successfully", {
+      cvMatchRate: result.cvMatchRate,
+    });
+
+    return result;
   }
 
   /**
@@ -113,6 +131,11 @@ export class LLMService {
    * @throws An error if the LLM fails to return a valid response.
    */
   async parseProjectReport(projectReportText: string): Promise<string> {
+    // Log project report parsing start
+    logger.debug("Parsing project report with LLM", {
+      textLength: projectReportText.length,
+    });
+
     // Build the prompt with project report text
     const prompt = buildPrompt(PROJECT_PROMPTS.PARSE_REPORT, {
       projectReportText,
@@ -129,10 +152,12 @@ export class LLMService {
     });
 
     if (!response?.text) {
+      logger.error("LLM failed to return project report parse response");
       throw new Error("Failed to parse project report - no response from LLM");
     }
 
     // Return the raw JSON string response
+    logger.info("Project report parsed successfully");
     return response.text;
   }
 
@@ -152,6 +177,13 @@ export class LLMService {
     scoringRubric: string,
     caseStudyBrief: string,
   ): Promise<projectEvaluationResponse> {
+    // Log project report evaluation start
+    logger.debug("Evaluating project report with LLM", {
+      reportTextLength: projectReportText.length,
+      rubricLength: scoringRubric.length,
+      briefLength: caseStudyBrief.length,
+    });
+
     // Build the prompt with project report text, scoring rubric, and case study brief
     const prompt = buildPrompt(PROJECT_PROMPTS.EVALUATE_PROJECT, {
       projectReportText,
@@ -170,13 +202,19 @@ export class LLMService {
     });
 
     if (!response?.text) {
+      logger.error("LLM failed to return project evaluation response");
       throw new Error(
         "Failed to evaluate project case study - no response from LLM",
       );
     }
 
     // Parse to JSON and return the evaluation result
-    return JSON.parse(response.text) as projectEvaluationResponse;
+    const result = JSON.parse(response.text) as projectEvaluationResponse;
+    logger.info("Project report evaluated successfully", {
+      projectScore: result.projectScore,
+    });
+
+    return result;
   }
 
   /**
@@ -198,6 +236,9 @@ export class LLMService {
     projectFeedback: string,
     jobTitle: string,
   ): Promise<string> {
+    // Log final summary generation start
+    logger.debug("Generating final summary with LLM", { jobTitle });
+
     // Build the prompt with evaluation results and job title
     const prompt = buildPrompt(OVERALL_PROMPT.FINAL_SUMMARY, {
       cvMatchRate,
@@ -214,12 +255,14 @@ export class LLMService {
     });
 
     if (!response?.text) {
+      logger.error("LLM failed to return final summary response");
       throw new Error(
         "Failed to generate final summary - no response from LLM",
       );
     }
 
     // Return the summary text
+    logger.info("Final summary generated successfully");
     return response.text;
   }
 }

@@ -1,4 +1,5 @@
 import { JobStatus } from "../generated/prisma";
+import logger from "../utils/logger";
 import { extractTextFromPDF } from "../utils/pdf-extraction";
 import { prisma } from "../utils/prisma-client";
 import { LLMService } from "./llm.services";
@@ -41,7 +42,9 @@ export class EvaluationService {
 
   // Initialize RAG service (e.g., connect to ChromaDB)
   async initialize(): Promise<void> {
+    logger.info("Initializing RAG service");
     await this.ragService.initialize();
+    logger.info("RAG service initialized successfully");
   }
 
   /**
@@ -57,21 +60,30 @@ export class EvaluationService {
     // Destructure input data
     const { jobId, jobTitle, cvDocumentId, reportDocId } = data;
 
+    logger.info("Starting candidate evaluation", { jobId, jobTitle });
+
     try {
       // Update job status to PROCESSING
       await this.updateJobStatus(jobId, JobStatus.PROCESSING);
 
       // 1. Retrieve job-related documents
+      logger.info("Step 1: Retrieving job documents", { jobId, jobTitle });
       const { jobDescription, scoringRubric, caseStudyBrief } =
         await this.retrieveJobDocuments(jobTitle);
 
       // 2. Load candidate documents (CV and project report)
+      logger.info("Step 2: Loading candidate documents", {
+        jobId,
+        cvDocumentId,
+        reportDocId,
+      });
       const { cvText, projectText } = await this.loadCandidateDocuments(
         cvDocumentId,
         reportDocId,
       );
 
       // 3. Parse and evaluate CV document
+      logger.info("Step 3: Processing CV", { jobId });
       const { parsedCV, cvEvaluation } = await this.processCV(
         cvText,
         jobDescription,
@@ -79,6 +91,7 @@ export class EvaluationService {
       );
 
       // 4. Parse and evaluate project report
+      logger.info("Step 4: Processing project report", { jobId });
       const { parsedProject, projectEvaluation } = await this.processProject(
         projectText,
         caseStudyBrief,
@@ -86,6 +99,7 @@ export class EvaluationService {
       );
 
       // 5. Generate final summary combining CV and project evaluations
+      logger.info("Step 5: Generating final summary", { jobId });
       const finalSummary = await this.llmService.generateFinalSummary(
         String(cvEvaluation.cvMatchRate),
         cvEvaluation.cvFeedback,
@@ -104,13 +118,21 @@ export class EvaluationService {
       };
 
       // Save results to database
+      logger.info("Step 6: Saving evaluation results", { jobId });
       await this.saveEvaluationResults(jobId, results);
 
       // Update job status to COMPLETED
       await this.updateJobStatus(jobId, JobStatus.COMPLETED);
+      logger.info("Candidate evaluation completed successfully", { jobId });
+
       return results;
     } catch (error) {
       // On any error, update job status to FAILED with error message
+      logger.error("Candidate evaluation failed", {
+        jobId,
+        error: error instanceof Error ? error.message : error,
+      });
+
       await this.updateJobStatus(
         jobId,
         JobStatus.FAILED,
@@ -132,18 +154,24 @@ export class EvaluationService {
    */
   private async retrieveJobDocuments(jobTitle: string) {
     // Search for the most relevant job title by its semantic similarity
+    logger.debug("Searching for relevant job", { jobTitle });
     const relevantJob = await this.ragService.searchRelevantJob(jobTitle);
 
     if (!relevantJob) {
+      logger.error("No relevant job found", { jobTitle });
       throw new Error(`No relevant job found for title: ${jobTitle}`);
     }
 
     // Fetch the required documents for the identified job title
+    logger.debug("Relevant job found", { relevantJob });
+    logger.debug("Fetching job documents", { relevantJob });
     const [jobDescription, scoringRubric, caseStudyBrief] = await Promise.all([
       this.ragService.searchJobDocument(relevantJob, "job_description"),
       this.ragService.searchJobDocument(relevantJob, "scoring_rubric"),
       this.ragService.searchJobDocument(relevantJob, "case_study_brief"),
     ]);
+
+    logger.info("Job documents retrieved successfully", { relevantJob });
 
     return {
       jobDescription,
@@ -165,6 +193,12 @@ export class EvaluationService {
     cvDocumentId: string,
     reportDocId: string,
   ) {
+    // Log document retrieval attempt
+    logger.debug("Fetching candidate documents from database", {
+      cvDocumentId,
+      reportDocId,
+    });
+
     // Fetch document records from the database
     const [cvDoc, reportDoc] = await Promise.all([
       prisma.document.findUnique({ where: { id: cvDocumentId } }),
@@ -172,14 +206,26 @@ export class EvaluationService {
     ]);
 
     if (!cvDoc || !reportDoc) {
+      logger.error("Candidate documents not found", {
+        cvDocumentId,
+        reportDocId,
+      });
       throw new Error("Candidate documents not found");
     }
+
+    // Log text extraction attempt
+    logger.debug("Extracting text from PDF documents", {
+      cvPath: cvDoc.filepath,
+      reportPath: reportDoc.filepath,
+    });
 
     // Extract text from both PDF documents concurrently
     const [cvText, projectText] = await Promise.all([
       extractTextFromPDF(cvDoc.filepath),
       extractTextFromPDF(reportDoc.filepath),
     ]);
+
+    logger.info("Candidate documents loaded successfully");
 
     return { cvText, projectText };
   }
@@ -202,17 +248,26 @@ export class EvaluationService {
   ) {
     try {
       // Parse the CV to extract structured information
+      logger.debug("Parsing CV");
       const parsedCV = await this.llmService.parseCV(cvText);
 
       // Evaluate the CV against the job description and scoring rubric
+      logger.debug("Evaluating CV");
       const cvEvaluation = await this.llmService.evaluateCV(
         cvText,
         scoringRubric,
         jobDescription,
       );
 
+      logger.info("CV processed successfully", {
+        cvMatchRate: cvEvaluation.cvMatchRate,
+      });
+
       return { parsedCV, cvEvaluation };
     } catch (error) {
+      logger.error("Failed to process CV", {
+        error: error instanceof Error ? error.message : error,
+      });
       throw new Error(
         `Failed to process CV: ${error instanceof Error ? error.message : error}`,
       );
@@ -236,17 +291,28 @@ export class EvaluationService {
     scoringRubric: string,
   ) {
     try {
+      // Parse the project report to extract structured information
+      logger.debug("Parsing project report");
       const parsedProject =
         await this.llmService.parseProjectReport(projectText);
 
+      // Evaluate the project report against the case study brief and scoring rubric
+      logger.debug("Evaluating project report");
       const projectEvaluation = await this.llmService.evaluateProjectReport(
         projectText,
         scoringRubric,
         caseStudyBrief,
       );
 
+      logger.info("Project report processed successfully", {
+        projectScore: projectEvaluation.projectScore,
+      });
+
       return { parsedProject, projectEvaluation };
     } catch (error) {
+      logger.error("Failed to process project", {
+        error: error instanceof Error ? error.message : error,
+      });
       throw new Error(
         `Failed to process project: ${error instanceof Error ? error.message : error}`,
       );
@@ -281,7 +347,12 @@ export class EvaluationService {
           },
         },
       });
+
+      logger.info("Evaluation results saved successfully", { jobId });
     } catch (error) {
+      logger.error("Failed to save evaluation results", {
+        error: error instanceof Error ? error.message : error,
+      });
       throw new Error(
         `Failed to save results: ${error instanceof Error ? error.message : error}`,
       );
@@ -309,8 +380,24 @@ export class EvaluationService {
           updatedAt: new Date(),
         },
       });
+
+      logger.info("Job status updated", { jobId, status });
     } catch (error) {
-      console.error(`Failed to update job status for ${jobId}:`, error);
+      // Log error if job doesn't exist (might be deleted)
+      if (
+        error instanceof Error &&
+        error.message.includes("Record to update not found")
+      ) {
+        logger.warn("Job not found in database, cannot update status", {
+          jobId,
+        });
+        return;
+      }
+
+      logger.error("Failed to update job status", {
+        jobId,
+        error: error instanceof Error ? error.message : error,
+      });
     }
   }
 }

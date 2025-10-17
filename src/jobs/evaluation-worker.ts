@@ -3,6 +3,7 @@ import { EvaluationService } from "../services/evaluation.services";
 import { EvaluationJobData } from "./evaluation-queue";
 import { QUEUE_NAME } from "../utils/constants";
 import { redis } from "../utils/redis";
+import logger from "../utils/logger";
 
 // Initialize the evaluation service instance (lazy initialization)
 const evaluationService = new EvaluationService();
@@ -31,12 +32,24 @@ export const evaluationWorker = new Worker<EvaluationJobData>(
     // Destructure job data
     const { jobId, jobTitle, cvDocumentId, reportDocId } = job.data;
 
+    // Validate required job data
+    if (!jobId || !jobTitle || !cvDocumentId || !reportDocId) {
+      logger.error("Invalid job data: missing required fields", {
+        jobId,
+        jobTitle,
+        cvDocumentId,
+        reportDocId,
+      });
+      throw new Error("Invalid job data: missing required fields");
+    }
+
     try {
       // Initialize only on first job (lazy initialization)
       if (!isInitialized) {
-        console.log("🔧 Initializing evaluation service for first job...");
+        logger.info("Initializing evaluation service for first job");
         await evaluationService.initialize();
         isInitialized = true;
+        logger.info("Evaluation service initialized successfully");
       }
 
       // Run the complete evaluation workflow
@@ -45,6 +58,13 @@ export const evaluationWorker = new Worker<EvaluationJobData>(
         jobTitle,
         cvDocumentId,
         reportDocId,
+      });
+
+      // Log successful job completion
+      logger.info("Job completed successfully", {
+        jobId,
+        cvMatchRate: results.cvEvaluation.cvMatchRate,
+        projectScore: results.projectEvaluation.projectScore,
       });
 
       return {
@@ -57,11 +77,37 @@ export const evaluationWorker = new Worker<EvaluationJobData>(
         },
       };
     } catch (error) {
-      console.error(`❌ Job ${jobId} failed:`, error);
+      logger.error("Job processing failed", {
+        jobId,
+        error: error instanceof Error ? error.message : error,
+      });
 
-      throw new Error(
-        `Evaluation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+      let userMessage = "Evaluation failed";
+
+      if (error instanceof Error) {
+        if (error.message.includes("timeout")) {
+          userMessage = "Evaluation timed out. Please try again.";
+        } else if (
+          error.message.includes("quota") ||
+          error.message.includes("rate limit")
+        ) {
+          userMessage = "API rate limit reached. Please try again later.";
+        } else if (error.message.includes("overloaded")) {
+          userMessage =
+            "Model is currently overloaded. Please try again later.";
+        } else if (error.message.includes("not found")) {
+          userMessage = `Document or job configuration not found: ${error.message}`;
+        } else if (
+          error.message.includes("empty") ||
+          error.message.includes("too short")
+        ) {
+          userMessage = `Invalid document: ${error.message}`;
+        } else {
+          userMessage = error.message;
+        }
+      }
+
+      throw new Error(userMessage);
     }
   },
   {
@@ -76,31 +122,36 @@ export const evaluationWorker = new Worker<EvaluationJobData>(
  * They help track the worker's status, job progress, and any issues encountered.
  */
 evaluationWorker.on("ready", () => {
-  console.log("✅ Worker is ready and listening for jobs!");
+  logger.info("Worker is ready and listening for jobs");
 });
 
 evaluationWorker.on("error", (error) => {
-  console.error("❌ Worker error:", error);
+  logger.error("Worker error occurred", { error: error.message });
+  if (error.message.includes("connection") || error.message.includes("Redis")) {
+    logger.error(
+      "Critical: Redis connection error detected, worker may need restart",
+    );
+  }
 });
 
 evaluationWorker.on("completed", (job, result) => {
-  console.log(`✅ Worker completed job ${job.id}:`, result);
+  logger.info("Worker completed job", { jobId: job.id, result });
 });
 
 evaluationWorker.on("failed", (job, err) => {
-  console.error(`❌ Worker failed job ${job?.id}:`, err.message);
+  logger.error("Worker failed job", { jobId: job?.id, error: err.message });
 });
 
 evaluationWorker.on("active", (job) => {
-  console.log(`🔄 Worker started processing job ${job.id}`);
+  logger.info("Worker started processing job", { jobId: job.id });
 });
 
 evaluationWorker.on("drained", () => {
-  console.log("⏳ Worker has processed all jobs and is waiting...");
+  logger.info("Worker has processed all jobs and is waiting...");
 });
 
 evaluationWorker.on("stalled", (jobId) => {
-  console.log(`⚠️ Job ${jobId} stalled`);
+  logger.warn("Job stalled", { jobId });
 });
 
-console.log("🚀 Worker setup complete, should be listening for jobs...");
+logger.info("Worker setup complete, should be listening for jobs...");

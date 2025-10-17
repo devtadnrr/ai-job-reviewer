@@ -7,7 +7,8 @@
     "build": "tsc -p tsconfig.build.json",
     "worker": "ts-node-dev --respawn --transpile-only src/worker.ts",
     "start": "node dist/server.js",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "logs:clear": "rm -rf logs/*.log"
   },
   "keywords": [],
   "author": "",
@@ -41,6 +42,7 @@
     "fs-extra": "^11.3.2",
     "ioredis": "^5.8.1",
     "multer": "^2.0.2",
-    "pdfjs-dist": "^5.4.296"
+    "pdfjs-dist": "^5.4.296",
+    "winston": "^3.18.3"
   }
 }

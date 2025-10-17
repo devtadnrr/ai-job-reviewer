@@ -1,5 +1,6 @@
 import express, { Request, Response } from "express";
 import { prisma } from "../../utils/prisma-client";
+import logger from "../../utils/logger";
 
 const router = express.Router();
 
@@ -29,6 +30,7 @@ router.get("/result/:jobId", async (req: Request, res: Response) => {
 
     // If job not found, return 404
     if (!job) {
+      logger.warn("Requested job not found", { jobId });
       return res.status(404).json({ error: "Job not found" });
     }
 

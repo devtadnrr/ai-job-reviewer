@@ -12,6 +12,7 @@ import {
   REMOVE_ON_COMPLETE,
   REMOVE_ON_FAIL,
 } from "../../utils/constants";
+import logger from "../../utils/logger";
 
 const router = express.Router();
 
@@ -27,11 +28,23 @@ router.post("/evaluate", async (req: Request, res: Response) => {
 
     // Check for missing parameters
     if (!job_title || !cv_document_id || !report_document_id) {
+      logger.warn("Evaluation request missing required fields", {
+        job_title,
+        cv_document_id,
+        report_document_id,
+      });
       return res.status(400).json({
         error:
           "job_title, cv_document_id, and report_document_id are required.",
       });
     }
+
+    // Log the received evaluation request
+    logger.info("Received evaluation request", {
+      job_title,
+      cv_document_id,
+      report_document_id,
+    });
 
     // Verify that the specified documents exist
     const [cvDoc, reportDoc] = await Promise.all([
@@ -41,6 +54,10 @@ router.post("/evaluate", async (req: Request, res: Response) => {
 
     // If either document is not found, return 404
     if (!cvDoc || !reportDoc) {
+      logger.error("Documents not found", {
+        cv_document_id,
+        report_document_id,
+      });
       return res.status(404).json({
         error: "One or both of the specified documents were not found.",
       });
@@ -55,6 +72,8 @@ router.post("/evaluate", async (req: Request, res: Response) => {
         status: JobStatus.QUEUED,
       },
     });
+
+    logger.info("Evaluation job created", { jobId: evaluationJob.id });
 
     // Prepare job data for the evaluation queue
     const jobData: EvaluationJobData = {
@@ -75,12 +94,16 @@ router.post("/evaluate", async (req: Request, res: Response) => {
       removeOnFail: REMOVE_ON_FAIL,
     });
 
+    logger.info("Job queued successfully", { jobId: evaluationJob.id });
+
     // Respond with the created job's ID and status
     return res
       .status(202)
       .json({ id: evaluationJob.id, status: evaluationJob.status });
   } catch (error) {
-    console.error("Evaluate error:", error);
+    logger.error("Error creating evaluation job", {
+      error: error instanceof Error ? error.message : error,
+    });
     return res.status(500).json({
       error: "An error occurred while creating the evaluation job.",
     });

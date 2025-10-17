@@ -6,6 +6,7 @@ import {
 import { prisma } from "../../utils/prisma-client";
 import { DocumentType } from "../../generated/prisma";
 import { upload } from "../../utils/multer";
+import logger from "../../utils/logger";
 
 const router = express.Router();
 
@@ -57,7 +58,7 @@ router.post(
         },
       });
     } catch (error) {
-      console.error("Error uploading files:", error);
+      logger.error("Error uploading files:", error);
       return res.status(500).json({
         error: "An error occurred while uploading files.",
       });

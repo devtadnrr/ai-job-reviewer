@@ -11,6 +11,7 @@ import {
   INTERNAL_DOCUMENTS_DIR,
 } from "../utils/constants";
 import { cleanPdfText, extractTextFromPDF } from "../utils/pdf-extraction";
+import logger from "../utils/logger";
 
 interface DocumentMetadata {
   documentType: "job_description" | "case_study_brief" | "scoring_rubric";
@@ -44,12 +45,17 @@ export class RAGService {
    * This method should be called before any operations that require the collection.
    */
   async initialize(): Promise<void> {
+    logger.info("Initializing ChromaDB collection", {
+      collectionName: this.COLLECTION_NAME,
+    });
     this.collection = await this.chromaClient.getOrCreateCollection({
       name: this.COLLECTION_NAME,
       embeddingFunction: this.embeddingFunction,
     });
 
-    console.log(`Collection "${this.COLLECTION_NAME}" initialized`);
+    logger.info("ChromaDB collection initialized successfully", {
+      collectionName: this.COLLECTION_NAME,
+    });
   }
 
   /**
@@ -60,12 +66,17 @@ export class RAGService {
   async ingestAllDocuments(): Promise<void> {
     // Skip ingestion if documents already exist
     if (await this.hasDocuments()) {
-      console.log("Documents already ingested. Skipping ingestion.");
+      logger.info("Documents already ingested, skipping ingestion");
       return;
     }
 
+    logger.info("Starting document ingestion", {
+      documentsDir: this.DOCUMENTS_DIR,
+    });
+
     // Get job titles from subdirectory names
     const jobTitles = await fs.readdir(this.DOCUMENTS_DIR);
+    logger.info("Found job title directories", { count: jobTitles.length });
 
     // Iterate over each job title directory to ingest documents
     for (const jobTitle of jobTitles) {
@@ -73,11 +84,12 @@ export class RAGService {
       const stats = await fs.stat(jobPath);
 
       if (stats.isDirectory()) {
+        logger.debug("Processing job title directory", { jobTitle });
         await this.ingestJobDocuments(jobTitle, jobPath);
       }
     }
 
-    console.log("All documents ingested successfully");
+    logger.info("All documents ingested successfully");
   }
 
   /**
@@ -87,27 +99,48 @@ export class RAGService {
    * @returns The most relevant job title or null if no match is found.
    */
   async searchRelevantJob(query: string): Promise<string | null> {
-    // Search the collection for the most relevant document
-    const results = await this.collection!.query({
-      queryTexts: [query],
-      nResults: 1, // Retrieve only the top result
-    });
-
-    // Return null if no results found
-    const metadatas = results.metadatas?.[0] || [];
-    if (metadatas.length === 0) {
-      console.warn("No relevant documents found.");
-      return null;
+    // Validate input
+    if (!query || query.trim().length === 0) {
+      logger.error("Search query cannot be empty");
+      throw new Error("Search query cannot be empty");
     }
 
-    // Extract the relevant job title from the metadata and validate it
-    const relevantJob = metadatas[0]!.jobTitle;
-    if (typeof relevantJob !== "string") {
-      console.warn("Relevant job title is missing or invalid.");
-      return null;
-    }
+    logger.debug("Searching for relevant job", { query });
 
-    return relevantJob;
+    try {
+      // Search the collection for the most relevant document
+      const results = await this.collection!.query({
+        queryTexts: [query],
+        nResults: 1, // Retrieve only the top result
+      });
+
+      // Return null if no results found
+      const metadatas = results.metadatas?.[0] || [];
+      if (metadatas.length === 0) {
+        logger.warn("No relevant documents found for query", { query });
+        return null;
+      }
+
+      // Extract the relevant job title from the metadata and validate it
+      const relevantJob = metadatas[0]!.jobTitle;
+      if (typeof relevantJob !== "string") {
+        logger.warn("Relevant job title is missing or invalid");
+        return null;
+      }
+
+      logger.info("Relevant job found", { query, relevantJob });
+
+      return relevantJob;
+    } catch (error) {
+      // Log and re-throw error
+      logger.error("Error searching for relevant job", {
+        query,
+        error: error instanceof Error ? error.message : error,
+      });
+      throw new Error(
+        `Failed to search relevant job: ${error instanceof Error ? error.message : error}`,
+      );
+    }
   }
 
   /**
@@ -122,27 +155,50 @@ export class RAGService {
     jobTitle: string,
     documentType: string,
   ): Promise<string> {
-    // Get documents matching the job title
-    const relevantDocs = await this.collection!.get({
-      where: { jobTitle: { $eq: jobTitle } },
-    });
-
-    const metadatas = relevantDocs.metadatas ?? [];
-    const documents = relevantDocs.documents ?? [];
-
-    // Find the index of the requested document type based on metadata
-    const index = metadatas.findIndex(
-      (meta) => meta!.documentType === documentType,
-    );
-
-    // If not found, throw an error
-    if (index === -1) {
-      throw new Error(`No ${documentType} found for job title: ${jobTitle}`);
+    // Validate inputs
+    if (!jobTitle || jobTitle.trim().length === 0) {
+      logger.error("Job title cannot be empty");
+      throw new Error("Job title cannot be empty");
     }
 
-    // Return the cleaned text of the found document
-    const docText = documents[index] ?? "";
-    return cleanPdfText(docText);
+    // Check if collection is initialized
+    if (!this.collection) {
+      logger.error("RAG service not initialized");
+      throw new Error("RAG service not initialized. Call initialize() first.");
+    }
+
+    logger.debug("Searching for job document", { jobTitle, documentType });
+
+    try {
+      // Get documents matching the job title
+      const relevantDocs = await this.collection!.get({
+        where: { jobTitle: { $eq: jobTitle } },
+      });
+
+      const metadatas = relevantDocs.metadatas ?? [];
+      const documents = relevantDocs.documents ?? [];
+
+      // Find the index of the requested document type based on metadata
+      const index = metadatas.findIndex(
+        (meta) => meta!.documentType === documentType,
+      );
+
+      // If not found, throw an error
+      if (index === -1) {
+        throw new Error(`No ${documentType} found for job title: ${jobTitle}`);
+      }
+
+      // Return the cleaned text of the found document
+      const docText = documents[index] ?? "";
+      return cleanPdfText(docText);
+    } catch (error) {
+      logger.error("Error retrieving job document", {
+        jobTitle,
+        documentType,
+        error: error instanceof Error ? error.message : error,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -151,11 +207,18 @@ export class RAGService {
    * Use with caution as this will remove all ingested documents.
    */
   async clearCollection(): Promise<void> {
+    logger.info("Clearing ChromaDB collection", {
+      collectionName: this.COLLECTION_NAME,
+    });
+
     try {
       await this.chromaClient.deleteCollection({ name: this.COLLECTION_NAME });
       await this.initialize();
+      logger.info("Collection cleared successfully");
     } catch (error) {
-      console.error("Error clearing collection:", error);
+      logger.error("Error clearing collection", {
+        error: error instanceof Error ? error.message : error,
+      });
       throw error;
     }
   }
@@ -166,6 +229,7 @@ export class RAGService {
    */
   private async hasDocuments(): Promise<boolean> {
     const count = await this.collection!.count();
+    logger.debug("Checking document count", { count });
     return count > 0;
   }
 
@@ -182,6 +246,11 @@ export class RAGService {
     const files = await fs.readdir(jobPath);
     const pdfFiles = files.filter((file) => file.endsWith(".pdf"));
 
+    logger.info("Ingesting job documents", {
+      jobTitle,
+      fileCount: pdfFiles.length,
+    });
+
     for (const filename of pdfFiles) {
       const filePath = path.join(jobPath, filename);
       await this.ingestDocument(filePath, jobTitle, filename);
@@ -194,6 +263,7 @@ export class RAGService {
    * @param filePath The file system path to the PDF document.
    * @param jobTitle The job title associated with the document.
    * @param filename The name of the PDF file.
+   * @throws An error if the file does not exist, is empty, or if text extraction fails.
    */
   private async ingestDocument(
     filePath: string,
@@ -201,8 +271,27 @@ export class RAGService {
     filename: string,
   ): Promise<void> {
     try {
+      logger.debug("Ingesting document", { filename, filePath });
+
+      // Check if file exists
+      const fileExists = await fs.pathExists(filePath);
+      if (!fileExists) {
+        throw new Error(`File not found: ${filePath}`);
+      }
+
+      // Check file size (avoid processing corrupted/empty files)
+      const stats = await fs.stat(filePath);
+      if (stats.size === 0) {
+        throw new Error(`File is empty: ${filePath}`);
+      }
+
       // Extract text from the PDF file
       const text = await extractTextFromPDF(filePath);
+
+      // Throw an error if PDF extraction returned empty text
+      if (!text || text.trim().length === 0) {
+        throw new Error(`Failed to extract text from PDF: ${filePath}`);
+      }
 
       // Determine document type based on filename
       let documentType: DocumentMetadata["documentType"];
@@ -232,9 +321,14 @@ export class RAGService {
         documents: [text],
         metadatas: [metadata],
       });
+
+      logger.info("Document ingested successfully", { filename, documentType });
     } catch (error) {
-      console.error(`Error ingesting document ${filename}:`, error);
-      throw error;
+      logger.error("Error ingesting document", {
+        filename,
+        error: error instanceof Error ? error.message : error,
+      });
+      logger.warn("Skipping document due to error", { filename });
     }
   }
 
