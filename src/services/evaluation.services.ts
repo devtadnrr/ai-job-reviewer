@@ -2,7 +2,7 @@ import { JobStatus } from "../generated/prisma";
 import { extractTextFromPDF } from "../utils/pdf-extraction";
 import { prisma } from "../utils/prisma-client";
 import { LLMService } from "./llm.services";
-import { RAGService } from "./rag-service";
+import { RAGService } from "./rag.services";
 
 // Interface for input data to the evaluation process from the job queue
 interface EvaluationData {

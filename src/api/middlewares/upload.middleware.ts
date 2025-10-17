@@ -1,6 +1,10 @@
 import { NextFunction, Request, Response } from "express";
 import multer from "multer";
 
+/**
+ * Middleware to handle Multer errors during file upload.
+ * sends appropriate HTTP responses based on the error type.
+ */
 export const handleMulterError = (
   error: any,
   req: Request,
@@ -28,6 +32,10 @@ export const handleMulterError = (
   return res.status(400).json({ error: error.message });
 };
 
+/**
+ * Middleware to validate presence of required files in the upload request.
+ * Ensures both 'cv' and 'project_report' files are provided.
+ */
 export const validateFiles = (
   req: Request,
   res: Response,

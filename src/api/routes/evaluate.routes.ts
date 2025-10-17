@@ -5,14 +5,27 @@ import {
   EvaluationJobData,
   evaluationQueue,
 } from "../../jobs/evaluation-queue";
-import { QUEUE_NAME } from "../../utils/constants";
+import {
+  ATTEMPTS_RETRY,
+  EXPONENTIAL_BACKOFF_DELAY,
+  QUEUE_NAME,
+  REMOVE_ON_COMPLETE,
+  REMOVE_ON_FAIL,
+} from "../../utils/constants";
 
 const router = express.Router();
 
+/**
+ * POST /evaluate
+ * Creates a new evaluation job for a candidate's CV against a job description.
+ * Expects job_title, cv_document_id, and report_document_id in the request body.
+ */
 router.post("/evaluate", async (req: Request, res: Response) => {
   try {
+    // Validate request body
     const { job_title, cv_document_id, report_document_id } = req.body;
 
+    // Check for missing parameters
     if (!job_title || !cv_document_id || !report_document_id) {
       return res.status(400).json({
         error:
@@ -20,17 +33,20 @@ router.post("/evaluate", async (req: Request, res: Response) => {
       });
     }
 
+    // Verify that the specified documents exist
     const [cvDoc, reportDoc] = await Promise.all([
       prisma.document.findUnique({ where: { id: cv_document_id } }),
       prisma.document.findUnique({ where: { id: report_document_id } }),
     ]);
 
+    // If either document is not found, return 404
     if (!cvDoc || !reportDoc) {
       return res.status(404).json({
         error: "One or both of the specified documents were not found.",
       });
     }
 
+    // Create a new evaluation job in the database
     const evaluationJob = await prisma.evaluationJob.create({
       data: {
         jobTitle: job_title,
@@ -40,6 +56,7 @@ router.post("/evaluate", async (req: Request, res: Response) => {
       },
     });
 
+    // Prepare job data for the evaluation queue
     const jobData: EvaluationJobData = {
       jobId: evaluationJob.id,
       jobTitle: job_title,
@@ -47,20 +64,18 @@ router.post("/evaluate", async (req: Request, res: Response) => {
       reportDocId: report_document_id,
     };
 
-    const queueJob = await evaluationQueue.add(QUEUE_NAME, jobData, {
-      attempts: 3,
+    // Add the job to the evaluation queue with retry and cleanup options
+    await evaluationQueue.add(QUEUE_NAME, jobData, {
+      attempts: ATTEMPTS_RETRY,
       backoff: {
         type: "exponential",
-        delay: 5000,
+        delay: EXPONENTIAL_BACKOFF_DELAY,
       },
-      removeOnComplete: 10,
-      removeOnFail: 50,
+      removeOnComplete: REMOVE_ON_COMPLETE,
+      removeOnFail: REMOVE_ON_FAIL,
     });
 
-    console.log(
-      `📤 Queued evaluation job: ${evaluationJob.id} (Queue ID: ${queueJob.id})`,
-    );
-
+    // Respond with the created job's ID and status
     return res
       .status(202)
       .json({ id: evaluationJob.id, status: evaluationJob.status });
@@ -68,48 +83,6 @@ router.post("/evaluate", async (req: Request, res: Response) => {
     console.error("Evaluate error:", error);
     return res.status(500).json({
       error: "An error occurred while creating the evaluation job.",
-    });
-  }
-});
-
-router.get("/result/:jobId", async (req: Request, res: Response) => {
-  try {
-    const { jobId } = req.params;
-
-    const job = await prisma.evaluationJob.findUnique({
-      where: { id: jobId },
-      include: {
-        result: true,
-        cvDocument: {
-          select: { filename: true },
-        },
-        reportDocument: {
-          select: { filename: true },
-        },
-      },
-    });
-
-    if (!job) {
-      return res.status(404).json({ error: "Job not found" });
-    }
-
-    res.json({
-      jobId: job.id,
-      status: job.status,
-      result: job.result
-        ? {
-            cv_match_rate: job.result.cvMatchRate,
-            cv_feedback: job.result.cvFeedback,
-            project_score: job.result.projectScore,
-            project_feedback: job.result.projectFeedback,
-            overall_summary: job.result.overallSummary,
-          }
-        : null,
-    });
-  } catch (error) {
-    console.error("Error fetching job status:", error);
-    res.status(500).json({
-      error: "Failed to fetch job status",
     });
   }
 });

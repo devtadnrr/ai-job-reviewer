@@ -1,5 +1,5 @@
 import { EvaluationService } from "./services/evaluation.services";
-import { RAGService } from "./services/rag-service";
+import { RAGService } from "./services/rag.services";
 import { evaluationWorker } from "./jobs/evaluation-worker";
 
 /**

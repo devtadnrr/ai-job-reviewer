@@ -14,3 +14,9 @@ export const GEMINI_MODEL_NAME = "gemini-2.0-flash";
 
 // BullMQ Queue Configuration
 export const QUEUE_NAME = "evaluation";
+
+// Queue Retry and Cleanup Settings
+export const ATTEMPTS_RETRY = 3;
+export const EXPONENTIAL_BACKOFF_DELAY = 5000;
+export const REMOVE_ON_COMPLETE = 10;
+export const REMOVE_ON_FAIL = 50;
