@@ -1,0 +1,102 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ai-job-reviewer-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_job_reviewer}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ai-job-reviewer-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for BullMQ
+  redis:
+    image: redis:7-alpine
+    container_name: ai-job-reviewer-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - ai-job-reviewer-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ChromaDB for RAG
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: ai-job-reviewer-chromadb
+    ports:
+      - "${CHROMA_PORT:-8000}:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - ai-job-reviewer-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Server
+  api:
+    build: .
+    container_name: ai-job-reviewer-api
+    command: npm run dev
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ai_job_reviewer
+      REDIS_URL: redis://redis:6379
+      CHROMA_URL: http://chromadb:8000
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+      - chromadb
+    networks:
+      - ai-job-reviewer-network
+
+  # Background Worker
+  worker:
+    build: .
+    container_name: ai-job-reviewer-worker
+    command: npm run worker
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ai_job_reviewer
+      REDIS_URL: redis://redis:6379
+      CHROMA_URL: http://chromadb:8000
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+      - chromadb
+    networks:
+      - ai-job-reviewer-network
+
+networks:
+  ai-job-reviewer-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  chroma_data:
