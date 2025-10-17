@@ -27,6 +27,9 @@ Service to interact with LLM for parsing and evaluating CVs and project reports
 and generating final summaries */
 export class LLMService {
   private geminiClient: GoogleGenAI;
+  private readonly PARSING_TEMPERATURE = 0.1; // Low temperature for consistent parsing
+  private readonly EVALUATION_TEMPERATURE = 0.2; // Low temperature for consistent evaluation
+  private readonly SUMMARY_TEMPERATURE = 0.4; // Slightly higher for creative summaries
 
   constructor() {
     this.geminiClient = new GoogleGenAI({});
@@ -54,6 +57,7 @@ export class LLMService {
       config: {
         responseMimeType: "application/json",
         responseSchema: cvParseSchema,
+        temperature: this.PARSING_TEMPERATURE,
       },
     });
 
@@ -104,6 +108,7 @@ export class LLMService {
       config: {
         responseMimeType: "application/json",
         responseSchema: cvEvaluationSchema,
+        temperature: this.EVALUATION_TEMPERATURE,
       },
     });
 
@@ -148,6 +153,7 @@ export class LLMService {
       config: {
         responseMimeType: "application/json",
         responseSchema: projectParseSchema,
+        temperature: this.PARSING_TEMPERATURE,
       },
     });
 
@@ -198,6 +204,7 @@ export class LLMService {
       config: {
         responseMimeType: "application/json",
         responseSchema: projectEvaluationSchema,
+        temperature: this.EVALUATION_TEMPERATURE,
       },
     });
 
@@ -252,6 +259,9 @@ export class LLMService {
     const response = await this.geminiClient.models.generateContent({
       model: GEMINI_MODEL_NAME,
       contents: prompt,
+      config: {
+        temperature: this.SUMMARY_TEMPERATURE,
+      },
     });
 
     if (!response?.text) {

@@ -33,7 +33,7 @@ model Document {
 }
 
 model EvaluationJob {
-  id              String          @id @default(uuid())
+  id              String          @id @default(cuid())
   jobTitle        String
   status          JobStatus       @default(QUEUED)
   createdAt       DateTime        @default(now())
@@ -52,7 +52,7 @@ model EvaluationJob {
 }
 
 model EvaluationResult {
-  id              String          @id @default(uuid())
+  id              String          @id @default(cuid())
   jobId           String          @unique
   job             EvaluationJob   @relation(fields: [jobId], references: [id])
 
