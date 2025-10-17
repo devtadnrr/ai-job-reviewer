@@ -7,6 +7,7 @@ import {
   projectEvaluationSchema,
   projectParseSchema,
 } from "../schemas";
+import { OVERALL_PROMPT } from "../prompts/overall-summary-prompt";
 
 /* Interfaces for JSON parsed cv evaluation response from LLM */
 interface cvEvaluationResponse {
@@ -198,7 +199,7 @@ export class LLMService {
     jobTitle: string,
   ): Promise<string> {
     // Build the prompt with evaluation results and job title
-    const prompt = buildPrompt(PROJECT_PROMPTS.FINAL_SUMMARY, {
+    const prompt = buildPrompt(OVERALL_PROMPT.FINAL_SUMMARY, {
       cvMatchRate,
       cvFeedback,
       projectScore,
