@@ -18,12 +18,15 @@ The core challenge wasn't just "connect an LLM to an API." It was building a **r
 I identified five critical layers that needed to work together:
 
 **1. Document Management**
+
 The system needs to accept candidate documents (CV and project reports) and store them safely. Simple enough, but I needed to think about file validation, storage organization, and making sure documents could be retrieved quickly during evaluation.
 
 **2. RAG Infrastructure**
+
 Here's where it got interesting. The system has "ground truth" documents (job descriptions, case study briefs, scoring rubrics) that need to be retrieved intelligently. I couldn't just dump everything into the LLM—that would be expensive, slow, and confusing. I needed smart retrieval.
 
 **3. Multi-Step Evaluation Pipeline**
+
 This was the heart of the system. I envisioned it like an assembly line:
 - Parse the CV to extract structured data
 - Evaluate CV against job requirements
@@ -34,9 +37,11 @@ This was the heart of the system. I envisioned it like an assembly line:
 Each step builds on the previous one, and each step could potentially fail. That meant I needed clean separation between stages.
 
 **4. Async Processing with Job Queue**
+
 Nobody wants to sit around waiting 30+ seconds for an API response. The moment someone hits "Evaluate," they should get a job ID back immediately and be able to check status later. This meant implementing a proper job queue system.
 
 **5. Resilience & Error Recovery**
+
 This was non-negotiable. LLMs are unpredictable—they timeout, hit rate limits, and sometimes return garbage. I needed retry logic, fallback strategies, and graceful degradation baked into every component.
 
 ---
@@ -76,14 +81,17 @@ documents/
 I kept the API simple, three endpoints from the requirements:
 
 **POST /upload** - "Give me your documents"
+
 This endpoint accepts a CV or project report (PDF) via multipart form data. It stores the file, creates a database record, and returns a document ID. Clean, straightforward, stateless.
 
 **POST /evaluate** - "Start the evaluation, but don't make me wait"
+
 This is where the magic happens—or rather, where it starts. You send in a job title and two document IDs. The endpoint validates that the documents exist, creates an evaluation job, adds it to the queue, and immediately returns a job ID with status "QUEUED."
 
 The key word is "immediately." This endpoint doesn't wait for the evaluation to complete. It just kicks off the process and gets out of the way. Total response time: under 1 second.
 
 **GET /result/{id}** - "How's my evaluation going?"
+
 This lets you check on an evaluation job. If it's still processing, you get a status update. If it's done, you get the full results with scores and feedback. If it failed, you get a clear error message explaining what went wrong.
 
 This polling pattern is old-school but rock-solid. No WebSockets to manage, no connection timeouts, just simple HTTP requests that work everywhere.
@@ -142,9 +150,11 @@ model EvaluationResult {
 - **Error tracking:** `errorMessage` + `retryCount` = debuggability and resilience
 
 **Documents Table**
+
 Stores uploaded files with their metadata. One document record can be reused across multiple evaluation jobs—if a candidate applies to three different positions with the same CV, we don't store it three times.
 
 **Evaluation Jobs Table**
+
 This is the central nervous system. Each job tracks:
 - Which job title we're evaluating for
 - References to the CV and project report documents
@@ -155,6 +165,7 @@ This is the central nervous system. Each job tracks:
 The status field is crucial for the async pattern. It's how the API and the worker communicate without being tightly coupled.
 
 **Evaluation Results Table**
+
 When a job completes successfully, we store the structured results here:
 - CV match rate (0-100%)
 - CV feedback (detailed text)
@@ -208,14 +219,17 @@ I set worker concurrency to 1, meaning it processes one job at a time. This migh
 I'll be honest, I didn't pick Gemini because of brand loyalty. I picked it because of three specific features that made my life dramatically easier:
 
 **1. Native JSON Mode**
+
 Gemini has a `responseMimeType: "application/json"` setting that, combined with JSON schema validation, means I get structured outputs 99% of the time. No more parsing markdown tables or wrestling with regex to extract data. The LLM just returns valid JSON or retries internally.
 
 This is huge for reliability. When I ask for a CV evaluation with a score and feedback, I specify the exact schema, and Gemini respects it. This eliminated an entire class of bugs.
 
 **2. Generous Free Tier**
+
 Up to 1000 requests per day is perfect for development and MVP testing. I could iterate on prompts, test edge cases, and build the entire system without spending a dime. Gemini also has its own made SDK, so the integration process becomes much smoother.
 
 **3. Generous Free Tier**
+
 Gemini has its own embedding model such as text-embedding-004 model that integrates seamlessly with ChromaDB. One provider, less auth juggling.
 
 **What I considered but rejected**
@@ -354,18 +368,23 @@ Similarly, "Provide exactly 5 bullet points" prevents the model from giving you 
 The evaluation pipeline is a sequence of 5 LLM calls, each building on the previous one:
 
 **Step 1: Parse CV**
+
 Extract structured data from the raw CV text. This gives us clean JSON with skills, experience, education, etc.
 
 **Step 2: Evaluate CV**
+
 Take the parsed CV and compare it against the job description and CV scoring rubric. Output a match rate (0-100%) and detailed feedback.
 
 **Step 3: Parse Project Report**
+
 Extract structured data from the project report. What did they build? What technologies did they use? How did they document it?
 
 **Step 4: Evaluate Project**
+
 Compare the parsed project against the case study brief and project rubric. Output a score (1-5) and feedback.
 
 **Step 5: Generate Final Summary**
+
 Take the outputs from steps 2 and 4 and synthesize them into an overall recommendation. This is where we make the hire/no-hire call and suggest next steps.
 
 **Why Not One Big Prompt?**
@@ -533,9 +552,11 @@ This is **contract-driven LLM engineering**. The schema acts as a compile-time c
 ### Fallback Strategies
 
 **Graceful Degradation:**
+
 If CV evaluation succeeds but project evaluation fails after 3 retries, I save the partial results. The user gets CV feedback even though the project score is missing. This is better than "everything failed, try again later."
 
 **User-Friendly Error Messages:**
+
 I never expose raw error messages to response. Instead:
 - "timeout" → "Evaluation timed out. Please try again."
 - "rate limit" → "API rate limit reached. Please try again in a few minutes."
@@ -552,52 +573,67 @@ Let me walk you through the unusual scenarios I thought about and how I handled 
 ### 1. Scanned PDFs (Unreadable Text)
 
 **The Scenario:**
+
 A candidate uploads a scanned PDF—basically just images of pages. My PDF extraction library returns empty text or garbage characters.
 
 **How I Detected It:**
+
 After extraction, I check if the text is less than 100 characters. A real CV or project report should have at least a few hundred words. If it's suspiciously short, I reject it.
 
 **The Error Message:**
+
 "PDF contains insufficient text. This might be a scanned document. Please upload a text-based PDF."
 
 **How I Tested:**
+
 I created a test PDF by scanning a printed CV. The system correctly rejected it with the helpful error message.
 
 ### 2. Malformed or Invalid PDFs
 
 **The Scenario:**
+
 Someone uploads a corrupted PDF file or a file that's not actually a PDF despite having a `.pdf` extension. The PDF parser fails to extract any readable text.
 
 **How I Detected It:**
+
 The `extractTextFromPDF()` function would either throw an error or return empty/minimal text. While I don't have explicit validation for minimum text length in the current implementation, the system naturally handles this through error propagation.
 
 **How It's Handled:**
+
 If PDF extraction fails, the error propagates up through the evaluation service, gets caught by the worker's error handler, and the job is marked as `FAILED` with a descriptive error message. The retry logic kicks in automatically—if it's a transient parsing issue, it might succeed on retry. If it's genuinely corrupted, it fails permanently after 3 attempts.
 
 **The Error Message:**
+
 The error from the PDF parser is wrapped and returned to the user through the job status, making it clear that the document couldn't be processed.
 
 **Why This Works:**
+
 By letting errors propagate naturally and using the retry system, I don't need special-case validation for every possible PDF issue. The system is resilient by design—it tries to process, and if it can't, it fails gracefully with clear error messages.
 
 **How I Tested:**
+
 I tested this by attempting to rename a `.txt` file to `.pdf` and uploading it. The system correctly detected the invalid format during processing and marked the job as failed with an appropriate error message.
 
 ### 3. Missing Job Documents
 
 **The Scenario:**
+
 Someone triggers an evaluation for "backend_engineer_2025" but the system admin forgot to upload the scoring rubric PDF.
 
 **How I Detected It:**
+
 During RAG retrieval, I check that all three required documents (job description, case study, scoring rubric) exist. If any are missing, I fail immediately with a detailed error.
 
 **The Error Message:**
+
 "Job backend_engineer_2025 is missing: scoring rubric. Please contact admin."
 
 **Why Fail Fast?**
+
 There's no point starting the evaluation if we don't have the rubric. Failing immediately saves time and gives a clear action item (upload the missing file).
 
 **How I Tested:**
+
 I deleted the scoring rubric PDF from a job folder. The evaluation failed immediately with the specific error message—no wasted LLM calls.
 
 ---
@@ -609,27 +645,33 @@ I deleted the scoring rubric PDF from a job folder. The evaluation failed immedi
 **What Worked Exceptionally Well:**
 
 **1. The Two-Stage RAG Approach**
+
 The combination of semantic search for job discovery + metadata filtering for document retrieval worked flawlessly. Users can type "backend developer" and the system finds "backend_engineer_2025" without requiring exact matches. Zero cross-contamination between job positions.
 
 I tested this with intentionally vague queries like "product engineer (backend)" and "Backend Developer" and it consistently retrieved the correct documents.
 
 **2. Async Job Queue Pattern**
+
 The BullMQ + Redis setup handled failures beautifully. During testing, I deliberately killed the worker mid-evaluation, restarted it, and the job automatically resumed and completed. The exponential backoff (2s → 4s → 8s) meant transient API hiccups resolved themselves without manual intervention.
 
-**3. JSON Structured Output **
+**3. JSON Structured Output**
+
 Setting `responseMimeType: "application/json"` with defined schemas remove LLM output inconsistencies. Early testing without schemas had issues where scores came back as strings ("high") or out-of-range numbers (105/100). With schemas, these errors vanished.
 
 The contract-driven approach meant I could trust the output structure and focus on prompt engineering for content quality, not format validation.
 
 **4. Error Propagation Strategy**
+
 Letting errors naturally bubble up through the evaluation service, then catching them in the worker with clear classifications (transient vs. permanent), meant I didn't need special handling for every edge case. The system is self-healing for temporary issues and explicitly fails for permanent ones.
 
 **What Didn't Work as Expected:**
 
 **1. Initial Temperature Settings**
+
 I started with temperature 0.7 for evaluation (thinking it needed "reasoning"), but scores were wildly inconsistent—same CV scored 75%, then 82%, then 68% on identical runs. Dropping to 0.2 fixed it. Lesson learned: for scoring tasks, near-determinism beats creativity.
 
 **2. Concurrent Worker Processing**
+
 I initially set worker concurrency to 3, thinking parallel processing would be faster. Instead, I got simultaneous timeout errors when the LLM API was under load. Switching to concurrency=1 with smart retries actually improved throughput because jobs completed reliably on the first or second attempt instead of burning all 3 retries.
 
 ### Evaluation of Results: Why Scores Are Stable
@@ -648,15 +690,19 @@ I ran the same CV/project pair through the system 10 times to measure variance:
 **Why Stability Improved:**
 
 **1. Temperature Tuning**
+
 Low temperatures (0.1 for parsing, 0.2 for evaluation) dramatically reduced stochastic variance. The model became nearly deterministic for structured tasks.
 
 **2. Schema Validation as a Safety Net**
+
 Even when temperature occasionally produced variance, the JSON schema caught invalid outputs (scores outside range, missing fields) and forced regeneration.
 
 **3. Context Order in Prompts**
+
 Providing the rubric BEFORE the candidate materials prevented confirmation bias. The model evaluated against standards, not just describing the candidate.
 
 **4. Separate Parsing and Evaluation Steps**
+
 Parsing extracted facts (deterministic), then evaluation compared facts against rubrics (low variance). If I'd done both in one step, the model would conflate extraction and judgment.
 
 ### Future Improvements
@@ -664,26 +710,32 @@ Parsing extracted facts (deterministic), then evaluation compared facts against 
 **What I'd Do Differently with More Time:**
 
 **1. Unit Test Coverage**
+
 Right now I have comprehensive manual testing but no automated test suite. I'd add:
 - Unit tests for each LLM prompt with mock responses
 - Integration tests for the full evaluation pipeline
 - Regression tests to catch prompt drift over time
 
 **2. Webhook-Based Notifications**
+
 Replace polling with webhooks. When a job completes, POST results to a callback URL. Better UX, less polling traffic, easier integration with external systems.
 
 **3. Caching Layer for Repeated Evaluations**
+
 If the same CV is evaluated for multiple job positions, cache the parsing step. No need to re-parse identical documents. This would cut evaluation time by ~30%.
 
 **4. Prompt A/B Testing Framework**
+
 Build tooling to compare prompt variants side-by-side with the same test data. Track which prompts produce more specific feedback, more consistent scores, etc.
 
 **5. Rate Limit Awareness**
+
 Instead of reacting to 429 errors, proactively track API usage and implement token bucket rate limiting on the client side. Prevent hitting limits rather than handling them gracefully.
 
 ### Constraints That Shaped the Solution
 
 **Time Constraints:**
+
 I received this case study during my mid-semester exams, which meant I had to balance academic commitments with this project. In an ideal scenario, I would have had 5 full days of focused work, but reality looked more like:
 - **Day 1-2:** Exams + initial planning (architecture sketching during study breaks)
 - **Day 3:** Core implementation sprint (API, database, basic LLM integration)
@@ -756,15 +808,20 @@ When it's done:
 
 ### Screenshots
 `POST /upload`
-![Alt text](screenshots/upload_route.png "Upload Route")
+
+<img width="1308" height="785" alt="upload_route" src="https://github.com/user-attachments/assets/4a87c0b5-e34d-4330-8c70-aa489a706523" />
 
 
 `POST /evaluate`
-![Alt text](screenshots/evaluate_route.png "Evaluate Route")
+
+<img width="1309" height="661" alt="evaluate_route" src="https://github.com/user-attachments/assets/2f7e6e63-80ff-44a8-a66f-2e809fd37970" />
+
 
 
 `POST /result/cmgv5m5po0003n32hgz9o5apm`
-![Alt text](screenshots/result.png "Evaluate Route")
+
+<img width="1308" height="981" alt="result" src="https://github.com/user-attachments/assets/22a74b4c-c0f4-455f-b1b4-2fe30557b6e0" />
+
 
 ## Final Thoughts
 
