@@ -1,4 +1,4 @@
-# Backend Engineer
+# Backend Engineer Intern
 
 ## Candidate Information
 - Full Name: I Nengah Danarsa Suniadevta
@@ -666,9 +666,9 @@ Letting errors naturally bubble up through the evaluation service, then catching
 
 **What Didn't Work as Expected:**
 
-**1. Initial Temperature Settings**
+**1. Didn't Get Proper PDF Reader Library for Node.js**
 
-I started with temperature 0.7 for evaluation (thinking it needed "reasoning"), but scores were wildly inconsistent—same CV scored 75%, then 82%, then 68% on identical runs. Dropping to 0.2 fixed it. Lesson learned: for scoring tasks, near-determinism beats creativity.
+I tried several libraries in npm to do PDF extraction. But, many of them are created for client side instead of Node.js server side. In this project, I use the legacy build from PDFjs library to do that. This library also mainly works for the client side.
 
 **2. Concurrent Worker Processing**
 
@@ -715,40 +715,6 @@ Right now I have comprehensive manual testing but no automated test suite. I'd a
 - Unit tests for each LLM prompt with mock responses
 - Integration tests for the full evaluation pipeline
 - Regression tests to catch prompt drift over time
-
-**2. Webhook-Based Notifications**
-
-Replace polling with webhooks. When a job completes, POST results to a callback URL. Better UX, less polling traffic, easier integration with external systems.
-
-**3. Caching Layer for Repeated Evaluations**
-
-If the same CV is evaluated for multiple job positions, cache the parsing step. No need to re-parse identical documents. This would cut evaluation time by ~30%.
-
-**4. Prompt A/B Testing Framework**
-
-Build tooling to compare prompt variants side-by-side with the same test data. Track which prompts produce more specific feedback, more consistent scores, etc.
-
-**5. Rate Limit Awareness**
-
-Instead of reacting to 429 errors, proactively track API usage and implement token bucket rate limiting on the client side. Prevent hitting limits rather than handling them gracefully.
-
-### Constraints That Shaped the Solution
-
-**Time Constraints:**
-
-I received this case study during my mid-semester exams, which meant I had to balance academic commitments with this project. In an ideal scenario, I would have had 5 full days of focused work, but reality looked more like:
-- **Day 1-2:** Exams + initial planning (architecture sketching during study breaks)
-- **Day 3:** Core implementation sprint (API, database, basic LLM integration)
-- **Day 4:** RAG setup, error handling, and testing
-- **Day 5:** Documentation and polish
-
-This time pressure forced me to make pragmatic trade-offs:
-- ✅ **Prioritized:** Core functionality, resilience, and clear documentation
-- ❌ **Deferred:** Comprehensive test suites
-
-The good news? This constraint actually improved my decision-making. I focused on **simple, robust solutions** that work reliably rather than over-engineering features I didn't have time to test thoroughly.
-
-If I had another week, I'd add proper unit tests, implement caching for repeated evaluations, and build a monitoring dashboard. But for an MVP built alongside exams, I'm proud of what shipped. It's functional, resilient, and actually solves the problem.
 
 ## Result
 ### JSON Response

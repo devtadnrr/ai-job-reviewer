@@ -44,5 +44,7 @@ export const PROJECT_PROMPTS = {
     - Detailed feedback for each evaluation criterion
     - Specific examples from their submission
     - Actionable recommendations for improvement
+
+    Also give feedback in one paragraph towards HR to assess the candidate's technical fit for the role.
   `,
 } as const;

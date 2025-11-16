@@ -45,5 +45,6 @@ export const CV_PROMPTS = {
     6. Specific recommendations for the candidate
     
     Be objective, constructive, and provide actionable insights.
+    Also give CV feedback in one paragraph towards HR to assess the candidate's overall fit for the role.
   `,
 } as const;
