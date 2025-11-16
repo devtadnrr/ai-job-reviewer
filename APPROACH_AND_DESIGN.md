@@ -5,7 +5,7 @@
 - Email Address: devtadanarsa@gmail.com
 
 ## Repository Link
-https://github.com/devtadanarsa/ai-job-reviewer
+https://github.com/devtadnrr/ai-job-reviewer
 
 ## Initial Plan
 
